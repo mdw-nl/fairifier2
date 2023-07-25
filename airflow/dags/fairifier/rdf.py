@@ -1,11 +1,11 @@
 from pathlib import Path
 import logging
 from typing import Optional, Dict
-
 import rdflib as rdf
 from SPARQLWrapper import SPARQLWrapper, POSTDIRECTLY
-
-from airflow.operators.bash_operator import BashOperator
+import os
+from airflow.operators.bash import BashOperator
+import kglab
 
 
 def upload_triples_dir(input_path, sparql_endpoint, empty_db=True, **kwargs):
@@ -16,7 +16,7 @@ def upload_triples_dir(input_path, sparql_endpoint, empty_db=True, **kwargs):
         input_path (pathlib.Path): The location for the triples files
         sparql_endpoint (str): The sparql endpoint (without /statements at the end)
         empty_db (bool, optional): Indicates whether the db should be emptied before inserting. Defaults to True.
-    """   
+    """
     LOGGER = logging.getLogger("airflow.task")
     LOGGER.info(f'uploading dir {str(input_path)} to {sparql_endpoint}')
 
@@ -36,6 +36,7 @@ def upload_triples_dir(input_path, sparql_endpoint, empty_db=True, **kwargs):
     for file in input_path.glob('*.nt'):
         LOGGER.info(f'uploading file {str(file)}')
         upload_triples_file(file, sparql_endpoint, empty_db=False)
+
 
 def upload_terminology(url, sparql_endpoint, format='xml', **kwargs):
     """Uploads a given ontology file to the SPARQL endpoint
@@ -60,12 +61,13 @@ def upload_terminology(url, sparql_endpoint, format='xml', **kwargs):
                 %s
             } 
         }
-        """ % ('\n'.join(triples_lines[i:(i + 100000 if (i+100000) < len(triples_lines) else len(triples_lines))]))
+        """ % ('\n'.join(triples_lines[i:(i + 100000 if (i + 100000) < len(triples_lines) else len(triples_lines))]))
 
         sparql.setRequestMethod(POSTDIRECTLY)
         sparql.setQuery(query)
         sparql.query()
-        
+
+
 def upload_triples_file(filename, sparql_endpoint, empty_db=True, **kwargs):
     """Uploads a single triples (.nt) file to a given sparql endpoint.
 
@@ -73,10 +75,9 @@ def upload_triples_file(filename, sparql_endpoint, empty_db=True, **kwargs):
         filename (pathlib.Path): The input file
         sparql_endpoint (str): The sparql endpoint (without /statements at the end) 
         empty_db (bool, optional): Indicates whether the db should be emptied before inserting. Defaults to True.
-    """    
+    """
     LOGGER = logging.getLogger("airflow.task")
     LOGGER.info(f'uploading file {str(filename)} to {sparql_endpoint}')
-
 
     sparql = SPARQLWrapper(sparql_endpoint + '/statements')
 
@@ -93,11 +94,10 @@ def upload_triples_file(filename, sparql_endpoint, empty_db=True, **kwargs):
         filedata = f.readlines()
         LOGGER.info(f'Found {len(filedata)} lines (triples) in file {str(filename)}')
 
-
     for i in range(0, len(filedata), 100000):
         g = rdf.Graph()
         g.parse(
-            data='\n'.join(filedata[i:(i + 100000 if (i+100000) < len(filedata) else len(filedata))]), 
+            data='\n'.join(filedata[i:(i + 100000 if (i + 100000) < len(filedata) else len(filedata))]),
             format='nt'
         )
 
@@ -109,46 +109,78 @@ def upload_triples_file(filename, sparql_endpoint, empty_db=True, **kwargs):
                 %s
             } 
         }
-        """ % (filename.with_suffix('').name ,g.serialize(format='nt'))
+        """ % (filename.with_suffix('').name, g.serialize(format='nt'))
 
         sparql.setRequestMethod(POSTDIRECTLY)
         sparql.setQuery(query)
         sparql.query()
 
-class OntOperator(BashOperator):    
+
+def rdf_conversion(workdir,
+                   r2rml_cli_dir,
+                   rdb_connstr,
+                   rdb_user,
+                   rdb_pass):
+    """
+
+    Args:
+        workdir:
+
+    Returns:
+
+    """
+    LOGGER = logging.getLogger("airflow.task")
+    count = 0
+    LOGGER.warning(f'show meeee file {workdir}')
+    with open(workdir + "/ttl/mapping.ttl", "r") as f:
+        t = f.read()
+        # LOGGER.info(f'uploading file LOL {t}')
+    # Iterate directory
+    LOGGER.info(f'Connect string  {str(rdb_connstr)}')
+    LOGGER.info(f'Connect user  {str(rdb_user)}')
+    LOGGER.info(f'Connect psw  {str(rdb_pass)}')
+    LOGGER.warning(f'show meeee file LOL')
+    config = "[CONFIGURATION]"+"\nnumber_of_processes=1"+\
+        "\n[DataSource1]" + f"\nmappings={workdir}/ttl/mapping.ttl" + \
+             f"\ndb_url= postgresql://{rdb_user}:{rdb_pass}@postgres:5432/data"
+
+    LOGGER.warning(str(kglab.__version__))
+    kg = kglab.KnowledgeGraph()
+    kg.materialize(config)
+
+
+class OntOperator(BashOperator):
     def __init__(self,
                  workdir,
                  r2rml_cli_dir,
                  rdb_connstr,
                  rdb_user,
                  rdb_pass,
-                 env: Optional[Dict[str, str]] = {}, 
-                 skip_exit_code: int = 99, 
+                 env: Optional[Dict[str, str]] = {},
+                 skip_exit_code: int = 99,
                  **kwargs) -> None:
-
         rdb_connstr = rdb_connstr.replace(':', r'\:')
+        bash_command = 'echo "jdbc.name=r2rml" > ${workdir}/r2rml.properties ; ' + \
+                       f'echo "jdbc.url={rdb_connstr}"' + ' >> ${workdir}/r2rml.properties ; ' + \
+                       f'echo "jdbc.user={rdb_user}"' + ' >> ${workdir}/r2rml.properties ; ' + \
+                       f'echo "jdbc.password={rdb_pass}"' + ' >> ${workdir}/r2rml.properties\n'
 
-        bash_command = 'echo "jdbc.name=r2rml" > ${workdir}/r2rml.properties ; ' +\
-            f'echo "jdbc.url={rdb_connstr}"' + ' >> ${workdir}/r2rml.properties ; ' +\
-            f'echo "jdbc.user={rdb_user}"' + ' >> ${workdir}/r2rml.properties ; ' +\
-            f'echo "jdbc.password={rdb_pass}"' + ' >> ${workdir}/r2rml.properties\n'
+        bash_command = bash_command + "mkdir -p ${workdir}/output \n" + \
+                       "if ls ${workdir}/output/*.nt >/dev/null 2>&1; " + \
+                       "then rm ${workdir}/output/*.nt; " + \
+                       "fi \n" + \
+                       "FILES=(${workdir}/ttl/*.ttl) \n" + \
+                       "for file in ${FILES[@]}; " + \
+                       "do \n" + \
+                       "echo $file \n" + \
+                       "output=`basename $file` \n" + \
+                       "${R2RML_CLI_DIR}/ontop materialize " + \
+                       "-m $file " + \
+                       "-f ntriples " + \
+                       "-p ${workdir}/r2rml.properties " + \
+                       "-o ${workdir}/output/$output \n" + \
+                       "done"
 
-        bash_command= bash_command + "mkdir -p ${workdir}/output \n" +\
-        "if ls ${workdir}/output/*.nt >/dev/null 2>&1; " +\
-        "then rm ${workdir}/output/*.nt; " +\
-        "fi \n" + \
-        "FILES=(${workdir}/ttl/*.ttl) \n" +\
-        "for file in ${FILES[@]}; " +\
-        "do \n" + \
-        "echo $file \n" + \
-        "output=`basename $file` \n" +\
-        "${R2RML_CLI_DIR}/ontop materialize " +\
-        "-m $file " +\
-        "-f ntriples " +\
-        "-p ${workdir}/r2rml.properties " +\
-        "-o ${workdir}/output/$output \n" +\
-        "done"
-        
         env.setdefault('workdir', workdir)
         env.setdefault('R2RML_CLI_DIR', r2rml_cli_dir)
 

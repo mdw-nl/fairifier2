@@ -6,9 +6,9 @@ from uuid import uuid4
 from typing import Optional, Dict
 import shutil
 
-from airflow.sensors.base_sensor_operator import BaseSensorOperator
-from airflow.operators.bash_operator import BashOperator
-
+from airflow.sensors.bash import BaseSensorOperator
+from airflow.operators.bash import BashOperator
+import logging
 
 def setup_tmp_dir(**kwargs):
     ti = kwargs['task_instance']
@@ -16,6 +16,10 @@ def setup_tmp_dir(**kwargs):
     dir_name.mkdir(parents=True, exist_ok=False)
 
     ti.xcom_push(key='working_dir', value=str(dir_name))
+    LOGGER = logging.getLogger("airflow.task")
+    p = Path(f"{dir_name}")
+    LOGGER.debug(p)
+    LOGGER.info(f"{p}")
 
     return str(dir_name)
 

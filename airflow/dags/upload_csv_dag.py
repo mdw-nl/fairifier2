@@ -2,8 +2,8 @@ from datetime import timedelta
 from pathlib import Path
 
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
-from airflow.operators.dagrun_operator import TriggerDagRunOperator
+from airflow.operators.python import PythonOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.utils.dates import days_ago
 from airflow.models import Variable
 
@@ -53,7 +53,7 @@ with DAG(
 
     trigger_triples_op = TriggerDagRunOperator(
         task_id="trigger_triples",
-        trigger_dag_id='generate_triples'
+        trigger_dag_id='test_rdf'
     )
 
     trigger_self_op = TriggerDagRunOperator(

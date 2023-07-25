@@ -19,7 +19,7 @@
 @prefix roo:<http://www.cancerdata.org/roo/>.
 @prefix skos: <http://www.w3.org/2008/05/skos#>.
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-@prefix ex: <http://example.com/ns#>.
+
 
 ############################################
 # SQL query
@@ -39,7 +39,7 @@ map:basicQuery a rr:LogicalTable;
 map:patient a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}";
+		rr:template "patient/{id}";
 		rr:class ncit:C16960;			# Patient
 	];
 	rr:predicateObjectMap [
@@ -79,7 +79,7 @@ map:patient a rr:TriplesMap;
 map:disease a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease";
+		rr:template "patient/{id}/disease";
 		rr:class ncit:C2926;			# Non-Small Cell Lung Carcinoma
 	];
 	rr:predicateObjectMap [
@@ -143,7 +143,7 @@ map:disease a rr:TriplesMap;
 map:overallStage a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease/stage";
+		rr:template "patient/{id}/disease/stage";
 		rr:class ncit:C28108;			# Disease Stage Qualifier
 	];
 	rr:predicateObjectMap [
@@ -163,7 +163,7 @@ map:overallStage a rr:TriplesMap;
 map:clinT a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease/t";
+		rr:template "patient/{id}/disease/t";
 		rr:class ncit:C48885;			# Generic Primary Tumor TNM Finding
 	];
 	rr:predicateObjectMap [
@@ -183,7 +183,7 @@ map:clinT a rr:TriplesMap;
 map:clinN a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease/n";
+		rr:template "patient/{id}/disease/n";
 		rr:class ncit:C48884;			# Generic Regional Lymph Nodes TNM Finding
 	];
 	rr:predicateObjectMap [
@@ -203,7 +203,7 @@ map:clinN a rr:TriplesMap;
 map:clinM a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease/m";
+		rr:template "patient/{id}/disease/m";
 		rr:class ncit:C48883;			# Generic Distant Metastasis TNM Finding
 	];
 	rr:predicateObjectMap [
@@ -223,7 +223,7 @@ map:clinM a rr:TriplesMap;
 map:diagnosisDate a rr:TriplesMap;
 	rr:logicalTable map:basicQuery;
 	rr:subjectMap [
-		rr:template "http://data.example.com/patient/{id}/disease/date_of_diagnosis";
+		rr:template "patient/{id}/disease/date_of_diagnosis";
 		rr:class ncit:C25164;			# Date
 	];
 	rr:predicateObjectMap [
@@ -243,7 +243,7 @@ map:diagnosisDate a rr:TriplesMap;
 map:vitalStatus a rr:TriplesMap;
     rr:logicalTable map:basicQuery;
     rr:subjectMap [
-        rr:template "http://data.example.com/patient/{id}/vital_status";
+        rr:template "patient/{id}/vital_status";
         rr:class ncit:C25717;			# Vital Status
     ];
     rr:predicateObjectMap [
@@ -273,7 +273,7 @@ map:vitalStatus a rr:TriplesMap;
 map:vitalStatusDate a rr:TriplesMap;
     rr:logicalTable map:basicQuery;
     rr:subjectMap [
-        rr:template "http://data.example.com/patient/{id}/vital_status/date_of_fu";
+        rr:template "patient/{id}/vital_status/date_of_fu";
         rr:class ncit:C25164;			# Date
     ];
     rr:predicateObjectMap [
