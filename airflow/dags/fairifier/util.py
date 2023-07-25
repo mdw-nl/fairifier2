@@ -16,10 +16,7 @@ def setup_tmp_dir(**kwargs):
     dir_name.mkdir(parents=True, exist_ok=False)
 
     ti.xcom_push(key='working_dir', value=str(dir_name))
-    LOGGER = logging.getLogger("airflow.task")
-    p = Path(f"{dir_name}")
-    LOGGER.debug(p)
-    LOGGER.info(f"{p}")
+
 
     return str(dir_name)
 

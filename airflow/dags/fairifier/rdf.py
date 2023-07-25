@@ -143,7 +143,8 @@ def rdf_conversion(workdir,
     config = "[CONFIGURATION]"+"\nnumber_of_processes=1"+\
         "\n[DataSource1]" + f"\nmappings={workdir}/ttl/mapping.ttl" + \
              f"\ndb_url= postgresql://{rdb_user}:{rdb_pass}@postgres:5432/data"
-
+    # create output directory
+    os.makedirs(workdir+"/output/")
     LOGGER.warning(str(kglab.__version__))
     kg = kglab.KnowledgeGraph()
     kg.materialize(config)
