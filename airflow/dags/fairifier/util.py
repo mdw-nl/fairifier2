@@ -8,9 +8,17 @@ import shutil
 
 from airflow.sensors.bash import BaseSensorOperator
 from airflow.operators.bash import BashOperator
-import logging
+
 
 def setup_tmp_dir(**kwargs):
+    """
+
+    Args:
+        **kwargs:
+
+    Returns:
+
+    """
     ti = kwargs['task_instance']
     dir_name = Path('/tmp/') / str(uuid4())
     dir_name.mkdir(parents=True, exist_ok=False)
@@ -18,9 +26,19 @@ def setup_tmp_dir(**kwargs):
     ti.xcom_push(key='working_dir', value=str(dir_name))
 
 
+
     return str(dir_name)
 
 def remove_tmp_dir(dir, **kwargs):
+    """
+
+    Args:
+        dir:
+        **kwargs:
+
+    Returns:
+
+    """
     shutil.rmtree(dir)
 
 

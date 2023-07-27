@@ -1,7 +1,6 @@
 from datetime import timedelta
 import os
 
-
 from airflow import DAG
 from airflow.utils.decorators import apply_defaults
 
@@ -10,7 +9,7 @@ from airflow.operators.python import PythonOperator
 from airflow.utils.dates import days_ago
 from airflow.models import Variable
 
-from fairifier.rdf import upload_triples_dir, upload_terminology, rdf_conversion
+from fairifier.rdf import upload_terminology, rdf_conversion, upload_rdf
 from fairifier.util import setup_tmp_dir, remove_tmp_dir, GitCloneOperator
 
 default_args = {
@@ -53,5 +52,37 @@ with DAG(
                    "rdb_pass": Variable.get('R2RML_RDB_PASSWORD')
                    }
     )
+    upload_triples_op = PythonOperator(
+        task_id='upload_to_graphDB',
+        python_callable=upload_rdf,
+        op_kwargs={"rdf_data": generate_triples_op.output,
+                   'sparql_endpoint': Variable.get('SPARQL_ENDPOINT')
+                   }
+    )
 
-    setup_op >> fetch_r2rml_op >> generate_triples_op
+    ontologies = {
+        'roo': 'https://data.bioontology.org/ontologies/ROO/submissions/8/download?apikey=8b5b7825-538d-40e0-9e9e-5ab9274a9aeb',
+        # 'ncit': 'https://data.bioontology.org/ontologies/NCIT/submissions/111/download?apikey=8b5b7825-538d-40e0-9e9e-5ab9274a9aeb',
+    }
+
+    finalize_op = PythonOperator(
+        task_id='finalize',
+        python_callable=remove_tmp_dir,
+        op_kwargs={
+            'dir': '{{ ti.xcom_pull(key="working_dir", task_ids="initialize") }}',
+        },
+        trigger_rule='all_done',
+    )
+
+    for key, url in ontologies.items():
+        op = PythonOperator(
+            task_id=f'upload_ontology_{key}',
+            python_callable=upload_terminology,
+            op_kwargs={
+                'url': url,
+                'sparql_endpoint': Variable.get('SPARQL_ENDPOINT')
+            }
+        )
+
+        upload_triples_op >> op >> finalize_op
+    setup_op >> fetch_r2rml_op >> generate_triples_op >> upload_triples_op
