@@ -78,7 +78,6 @@ def upload_rdf(rdf_data, sparql_endpoint):
 
 
 def rdf_conversion(workdir,
-                   r2rml_cli_dir,
                    rdb_connstr,
                    rdb_user,
                    rdb_pass):
@@ -98,7 +97,8 @@ def rdf_conversion(workdir,
              "na_values=,#N/A,N/A,#N/A N/A,n/a,NA,<NA>,#NA,NULL,null,NaN,nan,None\n" + \
              f"output_dir={workdir}/output/\n" + \
              "[DataSource1]" + f"\nmappings={workdir}/ttl/mapping.ttl" + \
-             f"\ndb_url= postgresql://{rdb_user}:{rdb_pass}@postgres:5432/data"
+             f"\ndb_url= postgresql://{rdb_user}:{rdb_pass}{rdb_connstr}"
+
     LOGGER.info(f'Config file content:\n {config}')
     LOGGER.info(f'Creating output dir: {workdir}/output/')
 
