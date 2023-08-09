@@ -46,8 +46,10 @@ This DAG does the following things:
 * Grab all `.ttl` files from that directory and assume they are R2RML files
 * For each of the R2RML files grabbed this way:
     * Using database defined by `R2RML_RDB_CONNSTR`, `R2RML_RDB_PASSWORD`, and `R2RML_RDB_USER`
-    * Using ontop
-    * Generate a `.ttl` file containing RDF data. The file has the same filename as the input R2RML file
+    ~~* Using ontop~~
+    * Using morph-kgc library
+    * Generate a KG with kglab library that is passed 
+    ~~* Generate a `.ttl` file containing RDF data. The file has the same filename as the input R2RML file~~
     * Upload this `.ttl` file to the GraphDB instance defined by `SPARQL_ENDPOINT` (in a graph with the same name as the .ttl file)
 * Finally download any ontologies defined in the `airflow/generate_triples_dag.py` file and upload them to a graph in the GraphDB instance
 
