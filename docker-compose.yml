@@ -24,9 +24,11 @@
 # The following variables are supported:
 #
 # AIRFLOW_IMAGE_NAME           - Docker image name used to run Airflow.
-#                                Default: apache/airflow:2.2.3
+#                                Default: apache/airflow:2.8.1
 # AIRFLOW_UID                  - User ID in Airflow containers
 #                                Default: 50000
+# AIRFLOW_PROJ_DIR             - Base path to which all the files will be volumed.
+#                                Default: .
 # Those configurations are useful mostly in case of standalone testing/running Airflow in test/try-out mode
 #
 # _AIRFLOW_WWW_USER_USERNAME   - Username for the administrator account (if requested).
@@ -34,40 +36,47 @@
 # _AIRFLOW_WWW_USER_PASSWORD   - Password for the administrator account (if requested).
 #                                Default: airflow
 # _PIP_ADDITIONAL_REQUIREMENTS - Additional PIP requirements to add when starting all containers.
+#                                Use this option ONLY for quick checks. Installing requirements at container
+#                                startup is done EVERY TIME the service is started.
+#                                A better way is to build a custom image or extend the official image
+#                                as described in https://airflow.apache.org/docs/docker-stack/build.html.
 #                                Default: ''
 #
 # Feel free to modify this file to suit your needs.
 ---
-version: '3'
-
 x-airflow-common:
   &airflow-common
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.2.3}
   build: 
     context: ./airflow
   env_file:
     - .env
   environment:
     &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__API__AUTH_BACKEND: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW_VAR_USER_DATA_DIR: /usr/local/airflow/user/data
     AIRFLOW_VAR_R2RML_CLI_DIR: /usr/local/airflow/r2rml
+    # yamllint disable rule:line-length
+    # Use simple http server on scheduler for health checks
+    # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
+    # yamllint enable rule:line-length
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
+    # for other purpose (development, test and especially production usage) build/extend Airflow image.
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
-    - ./airflow/ontop-cli-4.1.0:/usr/local/airflow/r2rml
-    - shared-data:/usr/local/airflow/user/data/input
     - airflow-logs-volume:/opt/airflow/logs
+    - shared-data:/usr/local/airflow/user/data/input
+    - ./airflow/:/opt/airflow/config
+    - ./airflow/:/opt/airflow/plugins
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -79,8 +88,6 @@ x-airflow-common:
 services:
   postgres:
     image: postgres:13
-    ports:
-      - 5432:5432
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -88,11 +95,11 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
       - ./postgres/create_second_db.sql:/docker-entrypoint-initdb.d/create_second_db.sql
-
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 5s
+      interval: 10s
       retries: 5
+      start_period: 5s
     restart: always
 
   redis:
@@ -101,21 +108,23 @@ services:
       - 6379
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 30s
       retries: 50
+      start_period: 30s
     restart: always
 
   airflow-webserver:
     <<: *airflow-common
     command: webserver
     ports:
-      - 8080:8080
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
@@ -126,82 +135,29 @@ services:
     <<: *airflow-common
     command: scheduler
     healthcheck:
-      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
-      interval: 10s
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
 
-  airflow-worker:
-    <<: *airflow-common
-    command: celery worker
-    healthcheck:
-      test:
-        - "CMD-SHELL"
-        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    environment:
-      <<: *airflow-common-env
-      # Required to handle warm shutdown of the celery workers properly
-      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
-      DUMB_INIT_SETSID: "0"
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
+  
 
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
-      interval: 10s
+      interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-
-  graphdb:
-    image: jvsoest/graphdb-free:fairstation
-    ports: 
-        - 7200:7200
-    environment:
-        - GDB_HEAP_SIZE=2g
-        - GDB_MIN_MEM=1g
-        - GDB_MAX_MEM=2g
-    ulimits:
-      nofile:
-        soft: 2048
-        hard: 2048
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
-
-  dashapp:
-    image: ghcr.io/maastrichtu-cds/fairifier2-app:latest
-    ports:
-      - 5050:5050
-    links:
-      - graphdb:graphdb
-    volumes:
-      - shared-data:/input
-      - ./backup:/backup
-    environment:
-      - TRIPLE_STORE_ADDR=http://graphdb:7200
-      - DATA_GRAPH_ADDR=http://localhost/mapping
-      - ONTOLOGY_GRAPH_ADDR=http://localhost/ontology
-      - ANNOTATIONS_GRAPH_ADDR=http://data.local/mapping
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -214,27 +170,13 @@ services:
     command:
       - -c
       - |
-        function ver() {
-          printf "%04d%04d%04d%04d" $${1//./ }
-        }
-        airflow_version=$$(gosu airflow airflow version)
-        airflow_version_comparable=$$(ver $${airflow_version})
-        min_airflow_version=2.2.0
-        min_airflow_version_comparable=$$(ver $${min_airflow_version})
-        if (( airflow_version_comparable < min_airflow_version_comparable )); then
-          echo
-          echo -e "\033[1;31mERROR!!!: Too old Airflow version $${airflow_version}!\e[0m"
-          echo "The minimum Airflow version supported: $${min_airflow_version}. Only use this or higher!"
-          echo
-          exit 1
-        fi
         if [[ -z "${AIRFLOW_UID}" ]]; then
           echo
           echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
           echo "If you are on Linux, you SHOULD follow the instructions below to set "
           echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
           echo "For other operating systems you can get rid of the warning with manually created .env file:"
-          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/start/docker.html#setting-the-right-airflow-user"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
           echo
         fi
         one_meg=1048576
@@ -267,7 +209,7 @@ services:
           echo
           echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
           echo "Please follow the instructions to increase amount of resources available:"
-          echo "   https://airflow.apache.org/docs/apache-airflow/stable/start/docker.html#before-you-begin"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
           echo
         fi
         mkdir -p /sources/logs /sources/dags /sources/plugins
@@ -276,10 +218,11 @@ services:
     # yamllint enable rule:line-length
     environment:
       <<: *airflow-common-env
-      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_DB_MIGRATE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
     volumes:
       - .:/sources
@@ -296,18 +239,38 @@ services:
       - bash
       - -c
       - airflow
-
-  flower:
-    <<: *airflow-common
-    command: celery flower
+  dashapp:
+    image: ghcr.io/maastrichtu-cds/fairifier2-app:latest
+    platform: linux/amd64
     ports:
-      - 5555:5555
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-    restart: always
+      - 5050:5050
+    links:
+      - graphdb:graphdb
+    volumes:
+      - shared-data:/input
+      - ./backup:/backup
+    environment:
+      - TRIPLE_STORE_ADDR=http://graphdb:7200
+      - DATA_GRAPH_ADDR=http://localhost/mapping
+      - ONTOLOGY_GRAPH_ADDR=http://localhost/ontology
+      - ANNOTATIONS_GRAPH_ADDR=http://data.local/mapping
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  graphdb:
+    image: jvsoest/graphdb-free:fairstation
+    ports: 
+        - 7200:7200
+    environment:
+        - GDB_HEAP_SIZE=2g
+        - GDB_MIN_MEM=1g
+        - GDB_MAX_MEM=2g
+    ulimits:
+      nofile:
+        soft: 2048
+        hard: 2048
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:

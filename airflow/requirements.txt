@@ -1,7 +1,7 @@
 rdflib >=6.0.0
 sparqlwrapper
 pandas
-sqlalchemy
 zeep
 beautifulsoup4
 kglab>=0.4.4
+SQLAlchemy>=1.4.28,<2.0
